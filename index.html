@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lord Ganesha Blessings – Bonus Reveal</title>
+  <style>
+    :root{
+      --bg:#0f0f12; --card:#1a1a22; --text:#f7f7fb; --muted:#b9bbcb; --accent:#ffd166; --accent2:#ff8c42; --good:#22c55e; --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; background:radial-gradient(1000px 500px at 80% -20%,#2a2438 0,#0f0f12 60%); color:var(--text);}
+    .wrap{max-width:900px; margin:24px auto 48px; padding:16px}
+    .card{background:linear-gradient(180deg,#1d1d26 0%, #14141b 100%); border:1px solid #2a2a36; border-radius:20px; box-shadow:0 10px 24px rgba(0,0,0,.35); overflow:hidden}
+    .header{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 18px; border-bottom:1px solid #242432}
+    .title{font-weight:800; letter-spacing:.2px; font-size:20px}
+    .sub{font-size:12px; color:var(--muted)}
+    .row{display:flex; gap:12px; flex-wrap:wrap}
+    input[type="tel"]{flex:1 1 260px; padding:14px 14px; border-radius:14px; outline:none; border:1px solid #2a2a36; background:#111118; color:var(--text); font-size:16px}
+    button{appearance:none; cursor:pointer; border:0; padding:14px 18px; border-radius:14px; font-weight:700; background:linear-gradient(180deg,var(--accent),var(--accent2)); color:#1b1b1b; box-shadow:0 8px 18px rgba(255,173,66,.3)}
+    button:disabled{opacity:.6; cursor:not-allowed}
+
+    .stage{position:relative; padding:18px; display:grid; place-items:center; background:
+      radial-gradient(600px 200px at 50% 0%, rgba(255,214,102,.15), transparent 60%),
+      linear-gradient(180deg,#14141b,#101016);
+    }
+    .img-wrap{position:relative; width:min(560px, 92vw);}
+    .img-wrap img{width:100%; height:auto; display:block; filter: drop-shadow(0 24px 48px rgba(0,0,0,.55)); border-radius:12px}
+
+    /* Click hotspot over legs */
+    .hotspot{position:absolute; left:35%; right:35%; top:65%; bottom:8%;}
+    .hotspot button{position:absolute; inset:0; width:100%; height:100%; background:transparent; border:2px dashed rgba(255,255,255,.05); border-radius:18px}
+    .hint{position:absolute; left:50%; transform:translateX(-50%); bottom:6px; font-size:12px; color:var(--muted)}
+
+    .result{padding:18px; text-align:center}
+    .result .points{font-size:28px; font-weight:900}
+    .result .bless{font-size:14px; color:var(--muted)}
+
+    .timer{margin-top:10px; font-variant-numeric:tabular-nums; font-weight:700}
+    .ok{color:var(--good)}
+    .err{color:var(--danger)}
+
+    .note{padding:12px 18px; border-top:1px solid #242432; font-size:12px; color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <div>
+          <div class="title">🙏 Lord Ganesha Blessings – Bonus Reveal</div>
+          <div class="sub">Enter mobile number → click on Shri Ganesh ji's legs to receive blessings (1 use per number every 24 hours).</div>
+        </div>
+        <div class="row">
+          <input id="mobile" type="tel" placeholder="Enter 10-digit mobile number" inputmode="numeric" maxlength="10" />
+          <button id="startBtn">Start</button>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div class="img-wrap">
+          <!-- Put ganesha.png in same folder as this file -->
+          <img src="ganesha.png" alt="Lord Ganesha Idol" id="ganeshaImg"/>
+          <div class="hotspot" id="hotspot">
+            <button id="revealBtn" title="Tap to receive blessings"></button>
+          </div>
+          <div class="hint">Tap the legs area to reveal blessings</div>
+        </div>
+      </div>
+
+      <div class="result" id="resultBox">
+        <div id="statusMsg">Enter your number and tap the legs to reveal blessings.</div>
+        <div class="points" id="pointsMsg"></div>
+        <div class="bless" id="blessMsg"></div>
+        <div class="timer" id="timer"></div>
+      </div>
+
+      <div class="note">
+        Note: This demo enforces the 24‑hour limit in the browser using localStorage. For production, use a secure backend/database verification for mobile numbers.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const MOBILE_KEY_PREFIX = 'ganesha_lock_';
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const BONUS_OPTIONS = [11, 21, 51, 101];
+
+  const el = {
+    mobile: document.getElementById('mobile'),
+    startBtn: document.getElementById('startBtn'),
+    revealBtn: document.getElementById('revealBtn'),
+    resultBox: document.getElementById('resultBox'),
+    statusMsg: document.getElementById('statusMsg'),
+    pointsMsg: document.getElementById('pointsMsg'),
+    blessMsg: document.getElementById('blessMsg'),
+    timer: document.getElementById('timer'),
+    hotspot: document.getElementById('hotspot')
+  };
+
+  let state = { mobile: '', locked: false, expiresAt: 0, points: null, timerId: null };
+
+  function storageKey(m){ return MOBILE_KEY_PREFIX + m; }
+
+  function isValidMobile(m){ return /^\d{10}$/.test(m); }
+
+  function loadLock(m){
+    try{
+      const raw = localStorage.getItem(storageKey(m));
+      if(!raw) return null;
+      const data = JSON.parse(raw);
+      if(!data || typeof data.expiresAt !== 'number') return null;
+      return data;
+    }catch(e){ return null; }
+  }
+
+  function saveLock(m, points){
+    const payload = { points, createdAt: Date.now(), expiresAt: Date.now() + DAY_MS };
+    localStorage.setItem(storageKey(m), JSON.stringify(payload));
+    return payload;
+  }
+
+  function msToHMS(ms){
+    if(ms < 0) ms = 0;
+    const s = Math.floor(ms / 1000);
+    const hh = String(Math.floor(s/3600)).padStart(2,'0');
+    const mm = String(Math.floor((s%3600)/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    return `${hh}:${mm}:${ss}`;
+  }
+
+  function startCountdown(){
+    clearInterval(state.timerId);
+    function tick(){
+      const remain = state.expiresAt - Date.now();
+      el.timer.textContent = state.locked ? `Auto‑lock active: ${msToHMS(remain)} remaining` : '';
+      if(remain <= 0){
+        clearInterval(state.timerId);
+        state.locked = false; state.points = null; state.expiresAt = 0;
+        el.pointsMsg.textContent = '';
+        el.blessMsg.textContent = '';
+        el.statusMsg.innerHTML = '24 hours completed. You can try again now.';
+        el.timer.textContent = '';
+        toggleUI();
+      }
+    }
+    tick();
+    state.timerId = setInterval(tick, 1000);
+  }
+
+  function toggleUI(){
+    const canReveal = isValidMobile(state.mobile) && !state.locked;
+    el.revealBtn.disabled = !canReveal;
+    el.startBtn.disabled = !isValidMobile(state.mobile);
+    el.hotspot.style.pointerEvents = canReveal ? 'auto' : 'none';
+  }
+
+  function hydrateForMobile(m){
+    state.mobile = m;
+    const lock = loadLock(m);
+    if(lock && lock.expiresAt > Date.now()){
+      state.locked = true; state.points = lock.points; state.expiresAt = lock.expiresAt;
+      el.statusMsg.innerHTML = 'This number has already received blessings in the last 24 hours.';
+      el.pointsMsg.textContent = `${state.points} free bonus points`;
+      el.blessMsg.textContent = 'Blessings from Lord Ganesha';
+      startCountdown();
+    }else{
+      if(lock && lock.expiresAt <= Date.now()){
+        // clear stale lock
+        localStorage.removeItem(storageKey(m));
+      }
+      state.locked = false; state.points = null; state.expiresAt = 0;
+      el.statusMsg.innerHTML = 'Ready. Tap on the legs to reveal blessings.';
+      el.pointsMsg.textContent = '';
+      el.blessMsg.textContent = '';
+      el.timer.textContent = '';
+      clearInterval(state.timerId);
+    }
+    toggleUI();
+  }
+
+  // Events
+  el.mobile.addEventListener('input', ()=>{
+    // keep only digits, max 10
+    el.mobile.value = el.mobile.value.replace(/\D/g,'').slice(0,10);
+    hydrateForMobile(el.mobile.value);
+  });
+
+  el.startBtn.addEventListener('click', ()=>{
+    const m = el.mobile.value.trim();
+    if(!isValidMobile(m)){
+      el.statusMsg.innerHTML = '<span class="err">Please enter a valid 10‑digit mobile number.</span>';
+      return;
+    }
+    hydrateForMobile(m);
+    el.statusMsg.innerHTML = 'Number saved. Tap the legs to reveal blessings.';
+  });
+
+  el.revealBtn.addEventListener('click', ()=>{
+    if(!isValidMobile(state.mobile)){
+      el.statusMsg.innerHTML = '<span class="err">Enter your 10‑digit mobile number first.</span>';
+      return;
+    }
+    if(state.locked){
+      el.statusMsg.innerHTML = 'Already used in the last 24 hours for this number.';
+      return;
+    }
+    // Randomly pick bonus and lock
+    const points = BONUS_OPTIONS[Math.floor(Math.random()*BONUS_OPTIONS.length)];
+    const lock = saveLock(state.mobile, points);
+    state.locked = true; state.points = points; state.expiresAt = lock.expiresAt;
+    el.pointsMsg.textContent = `${points} free bonus points`;
+    el.blessMsg.textContent = 'Blessings from Lord Ganesha';
+    el.statusMsg.innerHTML = '<span class="ok">🎉 Revealed! Auto‑locked for 24 hours.</span>';
+    startCountdown();
+    toggleUI();
+  });
+
+  // Prefill last used number if any
+  try{
+    const keys = Object.keys(localStorage).filter(k=>k.startsWith(MOBILE_KEY_PREFIX));
+    if(keys.length){
+      // Try to find the most recent lock
+      const latest = keys.map(k=>({k, v: JSON.parse(localStorage.getItem(k)||'{}')}))
+                         .sort((a,b)=>(b.v.createdAt||0)-(a.v.createdAt||0))[0];
+      if(latest){
+        const m = latest.k.replace(MOBILE_KEY_PREFIX,'');
+        const isTen = /^\d{10}$/.test(m);
+        if(isTen){ document.getElementById('mobile').value = m; hydrateForMobile(m); }
+      }
+    }
+  }catch(e){}
+
+  toggleUI();
+})();
+</script>
+</body>
+</html>
